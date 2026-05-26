@@ -645,11 +645,7 @@ input[type=range]::-webkit-slider-thumb{
         No API key required — click Connect to start.
       </div>
       <button class="btn btn-auth" id="authBtn" style="margin-top:8px">Connect</button>
-      <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
-        <div class="settings-section-title" style="margin-bottom:8px">Twelve Data API Key <span style="color:var(--text3);font-weight:400">(optional — historical backfill)</span></div>
-        <input class="tinput" id="tdApiKey" type="password" placeholder="Paste key for historical candle backfill"/>
-        <div class="field-hint">If provided, M1/M5/M15 history loads from Twelve Data on connect. Not required for live trading.</div>
-      </div>
+
     </div>
     <div class="settings-section">
       <div class="settings-section-title">BUY Setup — M5 HTF → M1 Confirm + Execute</div>
@@ -695,7 +691,7 @@ input[type=range]::-webkit-slider-thumb{
   </div>
   <div class="drawer-body">
     <div id="depositNotice" class="deposit-notice">
-      <div class="deposit-notice-icon">💰</div>
+      <div class="deposit-notice-icon" style="font-size:22px;margin-bottom:6px">$</div>
       <div class="deposit-notice-title">Set Your Starting Balance</div>
       <div class="deposit-notice-text">Enter an amount below to fund your demo account, then press <strong>Save &amp; Apply</strong> to begin trading.</div>
     </div>
@@ -855,10 +851,10 @@ input[type=range]::-webkit-slider-thumb{
       </div>
       <div class="field">
         <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:4px;padding:9px 12px;font-size:9px;color:var(--text2);line-height:1.8">
-          <span style="color:var(--gold);font-family:var(--sans);font-size:9px;font-weight:700;display:block;margin-bottom:3px">XAUUSD · Exness Standard Account</span>
+          <span style="color:var(--gold);font-family:var(--sans);font-size:9px;font-weight:700;display:block;margin-bottom:3px">XAUUSD · Deriv frxXAUUSD</span>
           Spread: 0.18–0.55 pts typical · Asian: ~0.50 · NY/LON overlap: ~0.20 · News spike: ~1.10–1.30<br>
-          Slippage: 0.00–0.12 pts · Execution: 50–150 ms · Leverage: 1:2000<br>
-          News: trades all events · lots adjust ×0.60–×1.20 by impact/timing
+          Slippage: 0.00–0.12 pts · Execution: 50–200 ms · Leverage: 1:2000<br>
+          Data: Deriv frxXAUUSD WebSocket · lots adjust x0.60–x1.20 by news impact
         </div>
       </div>
     </div>
@@ -900,9 +896,9 @@ input[type=range]::-webkit-slider-thumb{
   </div>
   <div class="drawer-body">
     <div class="bt-summary-note">
-      Replays your strategy on real historical XAUUSD data. Uses identical ICT/BMS rules, session filters, and risk management as live mode — no data advantage, no repainting. M5 HTF bias → M1 execution. Trades appear live on the chart during replay.<br><br>
-      <span style="color:var(--gold);font-family:var(--sans);font-size:8px;font-weight:700;letter-spacing:.08em">EXNESS STANDARD SIMULATION ACTIVE:</span><br>
-      📰 News-aware trading (ALL news types traded · lots ×0.60 at release · ×1.20 post-release) · Spread: 0.18–0.55 typical · News spike: ~1.10–1.30 · Slippage: 0.00–0.12 pts · Execution: 50–150 ms
+      Replays your strategy on real historical XAUUSD data from Deriv. Uses identical ICT/BMS rules, session filters, and risk management as live mode — no data advantage, no repainting. M5 HTF bias + M1 execution. Trades appear on chart during replay.<br><br>
+      <span style="color:var(--gold);font-family:var(--sans);font-size:8px;font-weight:700;letter-spacing:.08em">DERIV SIMULATION ACTIVE:</span><br>
+      News-aware trading (ALL news types traded · lots ×0.60 at release · ×1.20 post-release) · Spread: 0.18–0.55 typical | News spike: ~1.10–1.30 | Slippage: 0.00–0.12 pts | Execution: 50–200 ms
     </div>
     <div class="settings-section">
       <div class="settings-section-title">Date Range (DD-MM-YYYY)</div>
@@ -965,7 +961,7 @@ input[type=range]::-webkit-slider-thumb{
 
 <div class="drawer" id="drawerHistory">
   <div class="drawer-head">
-    <span class="drawer-title">📊 Live Performance</span>
+    <span class="drawer-title">Live Performance</span>
     <button class="drawer-close" onclick="closeDrawer()">✕</button>
   </div>
   <div class="drawer-body" id="liveHistBody">
@@ -1021,20 +1017,11 @@ input[type=range]::-webkit-slider-thumb{
 //  CHRONOLOGICAL ORDER: bars processed strictly index+1 after index; no
 //  look-back into future indices. Scrub/fast-forward uses the same pipeline.
 // ════════════════════════════════════════════════════════════════════════════
-// ── TWELVE DATA CONFIG (kept for optional historical backfill) ──
-const TD_SYMBOL     = 'XAU/USD';
-const TD_BASE       = 'https://api.twelvedata.com';
-let   TD_API_KEY    = '';          // populated from Setup input
-
 // ── DERIV WEBSOCKET CONFIG ──
 const DERIV_APP_ID = 1089;        // public demo app_id — register at deriv.com for production
 const DERIV_WS_URL = `wss://ws.binaryws.com/websockets/v3?app_id=${DERIV_APP_ID}`;
 const DERIV_SYMBOL = 'frxXAUUSD'; // Deriv symbol for spot Gold / USD
 
-let _tdPollTimer         = null;  // setInterval handle for TD polling (fallback only)
-let _tdPollActive        = false;
-let _localWS             = null;  // WebSocket handle — local Python candle server
-let _wsConnected         = false;
 let _derivWS             = null;  // WebSocket handle — Deriv live feed
 let _derivReconnectTimer = null;
 
@@ -1275,7 +1262,7 @@ async function fetchNewsForBacktest(startEpoch, endEpoch) {
       }
     } catch (_) { /* week not found — skip silently */ }
   }
-  addSignal('info', `📰 Backtest news: ${allEvents.length} USD events loaded for date range`, null);
+  addSignal('info', `Backtest news: ${allEvents.length} USD events loaded for date range`, null);
   return allEvents;
 }
 
@@ -2512,7 +2499,7 @@ function drawChart(overridePositions = null, overrideMid = null) {
     const pnlSign = livePnl >= 0 ? '+' : '';
     const lotSz = (pos.lots || 0.01).toFixed(2);
     const grade = (pos.quality||1) >= 3 ? '★★★' : (pos.quality||1) === 2 ? '★★' : '★';
-    const beLock = pos.trailActive ? ' 📈' : pos.beTriggered ? ' 🔒' : '';
+    const beLock = pos.trailActive ? ' TRAIL' : pos.beTriggered ? ' BE' : '';
     const inProfit = isBuy ? (midForPnl >= entryPrice) : (midForPnl <= entryPrice);
     const pnlColor = inProfit ? '#448aff' : '#ef5350';
     const entryLabel = `${isBuy ? 'BUY' : 'SELL'} ${lotSz} ${grade}${beLock} · ${pnlSign}$${Math.abs(livePnl).toFixed(2)}`;
@@ -2831,14 +2818,14 @@ function preTradeSafetyCheck() {
   if(tradingLocked) return { ok:false, reason:'locked' };
   if(hardFloor > 0 && bal <= hardFloor) {
     tradingLocked = true; botOn = false; syncBotButtons();
-    addSignal('warn',`🚨 HARD FLOOR — balance $${bal.toFixed(2)} at/below floor $${hardFloor.toFixed(2)}. Bot stopped.`,null);
+    addSignal('warn',`HARD FLOOR: balance $${bal.toFixed(2)} is at/below floor $${hardFloor.toFixed(2)}. Bot stopped.`,null);
     return { ok:false, reason:'hard_floor' };
   }
   if(hardFloor > 0) {
     const pctAboveFloor = ((bal - hardFloor) / Math.max(1,bal)) * 100;
     if(pctAboveFloor <= SAFETY.EMERG_FLOOR_PCT) {
       tradingLocked = true; botOn = false; syncBotButtons();
-      addSignal('warn',`🚨 EMERGENCY STOP — only $${(bal-hardFloor).toFixed(2)} (${pctAboveFloor.toFixed(1)}%) above hard floor. Bot stopped.`,null);
+      addSignal('warn',`EMERGENCY STOP: only $${(bal-hardFloor).toFixed(2)} (${pctAboveFloor.toFixed(1)}%) above hard floor. Bot stopped.`,null);
       return { ok:false, reason:'emergency' };
     }
   }
@@ -2946,7 +2933,7 @@ function updateSafetyUI() {
   if(ptpBadge) {
     if(postTPState && Date.now() < postTPState.evalEndTime) {
       const secLeft = Math.ceil((postTPState.evalEndTime - Date.now()) / 1000);
-      ptpBadge.textContent = `⏳ POST-TP ${secLeft}s`;
+      ptpBadge.textContent = `POST-TP ${secLeft}s`;
       ptpBadge.style.display = 'inline-block';
     } else {
       ptpBadge.style.display = 'none';
@@ -3011,7 +2998,7 @@ const newsEngine = {
       const data = await _fetchJSON('https://nfs.faireconomy.media/ff_calendar_thisweek.json');
       this.events = data.filter(e => e.country === 'USD');
     } catch (e) {
-      addSignal('warn', '📰 News calendar fetch failed — trading in NORMAL mode (no news filter)', null);
+      addSignal('warn', 'News calendar fetch failed — trading in NORMAL mode (no news filter)', null);
     }
   },
 
@@ -3096,17 +3083,17 @@ const newsEngine = {
     const ev = this.currentEvent;
     const note = ev.note ? ` · ${ev.note}` : '';
     if (this.state === 'PRE_RELEASE') {
-      return `⚡ ${ev.title} RELEASING NOW${note} · lots×0.60 · spread spike`;
+      return `${ev.title} RELEASING NOW${note} | lots x0.60 | spread spike`;
     }
     if (this.state === 'POST_RELEASE') {
       const minsAgo = Math.abs(ev.minutes).toFixed(0);
-      return `📈 POST-RELEASE [${ev.title}] ${minsAgo}min ago${note} · momentum lots×1.20`;
+      return `POST-RELEASE [${ev.title}] ${minsAgo}min ago${note} | momentum lots x1.20`;
     }
     if (this.state === 'AWARE') {
       const tag = ev.minutes > 0
         ? `in ${ev.minutes.toFixed(0)}min`
         : `${Math.abs(ev.minutes).toFixed(0)}min ago`;
-      return `📰 ${ev.impact} IMPACT: "${ev.title}" ${tag}${note} · lots×0.80`;
+      return `${ev.impact} IMPACT: ${ev.title} ${tag}${note} | lots x0.80`;
     }
     return null;
   },
@@ -3165,7 +3152,7 @@ function placeDemoTrade(dir, ob, quality = 1) {
 
   // ── EXECUTION DELAY simulation ──
   const delay = getExecDelay();
-  addSignal('info', `⏱ Exec delay ${delay}ms — order queued…`, null);
+  addSignal('info', `Exec delay: ${delay}ms — queuing order`, null);
   setTimeout(() => _executeDemoTrade(dir, ob, quality), delay);
 }
 
@@ -3197,7 +3184,7 @@ function _executeDemoTrade(dir, ob, quality = 1) {
   if(slDist > CFG.MAX_SL_PTS) {
     slPrice = isBuy ? entryPrice - CFG.MAX_SL_PTS : entryPrice + CFG.MAX_SL_PTS;
     slDist = CFG.MAX_SL_PTS;
-    addSignal('info', `SL capped from ${(isBuy?entryPrice+slDist:entryPrice-slDist).toFixed(2)} to ${slPrice.toFixed(2)} (max ${CFG.MAX_SL_PTS}pts)`, mid);
+    addSignal('info', `SL capped to max ${CFG.MAX_SL_PTS}pts: ${slPrice.toFixed(2)}`, mid);
   }
   if(slDist < 0.50) { addSignal('warn','SL too tight (< 0.50 pts) — skipping',null); return; }
   const tpPrice = isBuy ? entryPrice + slDist * CFG.RR : entryPrice - slDist * CFG.RR;
@@ -3205,7 +3192,7 @@ function _executeDemoTrade(dir, ob, quality = 1) {
   // ── RISK OVERFLOW CHECK ──
   const riskCheck = checkRiskOverflow(slDist, quality);
   if(riskCheck.blocked) {
-    addSignal('warn', `⛔ BLOCKED: Risk overflow ${riskCheck.overflow.toFixed(1)}× > 1.5× target — trade rejected`, mid);
+    addSignal('warn', `BLOCKED: Risk overflow ${riskCheck.overflow.toFixed(1)}× > 1.5× target — trade rejected`, mid);
     return;
   }
   if(riskCheck.warning) {
@@ -3225,8 +3212,8 @@ function _executeDemoTrade(dir, ob, quality = 1) {
   const slAmount = adjLots * 100 * slDist;
   const tpAmount = +(slAmount * CFG.RR).toFixed(2);
   const grade = quality >= 3 ? '★★★' : quality === 2 ? '★★' : '★';
-  const newsTag = newsEngine.state !== 'NORMAL' ? ` [📰${newsEngine.state}×${newsLotMult}]` : '';
-  const riskTag = riskCheck.overflow > 1.0 ? ` [⚠${riskCheck.overflow.toFixed(1)}×risk]` : '';
+  const newsTag = newsEngine.state !== 'NORMAL' ? ` [NEWS:${newsEngine.state}×${newsLotMult}]` : '';
+  const riskTag = riskCheck.overflow > 1.0 ? ` [RISK:${riskCheck.overflow.toFixed(1)}x]` : '';
   const pos = {
     id: ++demoPosId, dir, entry: entryPrice, lots: adjLots, posUnits, margin,
     slPrice, tpPrice, slAmount, tpAmount, quality,
@@ -3235,7 +3222,7 @@ function _executeDemoTrade(dir, ob, quality = 1) {
   demoPositions.push(pos);
   updateRiskAudit(riskCheck, pos);
   addSignal(dir==='UP'?'buy':'sell',
-    `DEMO ${isBuy?'BUY':'SELL'} ${adjLots.toFixed(2)}L ${grade}${newsTag}${riskTag} @ ${entryPrice.toFixed(2)} [sprd:${dynSpread}pt slip:${slip.toFixed(2)}pt] | SL ${slPrice.toFixed(2)} | TP ${tpPrice.toFixed(2)} | Q×${qMult} G×${growthFactor.toFixed(2)}`, mid);
+    `${isBuy?'BUY':'SELL'} ${adjLots.toFixed(2)}L ${grade}${newsTag}${riskTag} @ ${entryPrice.toFixed(2)} | SL:${slPrice.toFixed(2)} TP:${tpPrice.toFixed(2)} | sprd:${dynSpread}pt slip:${slip.toFixed(2)}pt`, mid);
   const logEntry = {
     id: pos.id, dir: isBuy?'BUY':'SELL', entry: entryPrice, status: 'open', pnl: null,
     tpPrice: pos.tpPrice, slPrice: pos.slPrice, lots: adjLots,
@@ -3273,7 +3260,7 @@ function updateThreePhaseTrail(pos, currentPrice) {
   if(pctToTP >= CFG.TRAIL_PHASE_1 && phase < 1) {
     newSL = isBuy ? pos.entry + CFG.TRAIL_DIST : pos.entry - CFG.TRAIL_DIST;
     phase = 1;
-    trailInfo = `🔒 BE LOCK @ ${CFG.TRAIL_PHASE_1}% — SL → ${newSL.toFixed(2)}`;
+    trailInfo = `BE LOCK @ ${CFG.TRAIL_PHASE_1}% — SL → ${newSL.toFixed(2)}`;
   }
   // Phase 2: 40% trail (profit protection)
   else if(pctToTP >= CFG.TRAIL_PHASE_2 && phase < 2) {
@@ -3281,7 +3268,7 @@ function updateThreePhaseTrail(pos, currentPrice) {
     const candidate = isBuy ? currentPrice - trailDist : currentPrice + trailDist;
     newSL = isBuy ? Math.max(pos.slPrice, candidate) : Math.min(pos.slPrice, candidate);
     phase = 2;
-    trailInfo = `🛡 PROT @ ${CFG.TRAIL_PHASE_2}% — 40% trail → ${newSL.toFixed(2)}`;
+    trailInfo = `PROT @ ${CFG.TRAIL_PHASE_2}% — 40% trail → ${newSL.toFixed(2)}`;
   }
   // Phase 3: 60% trail (runner mode)
   else if(pctToTP >= CFG.TRAIL_PHASE_3 && phase < 3) {
@@ -3289,7 +3276,7 @@ function updateThreePhaseTrail(pos, currentPrice) {
     const candidate = isBuy ? currentPrice - trailDist : currentPrice + trailDist;
     newSL = isBuy ? Math.max(pos.slPrice, candidate) : Math.min(pos.slPrice, candidate);
     phase = 3;
-    trailInfo = `🏃 RUN @ ${CFG.TRAIL_PHASE_3}% — 60% trail → ${newSL.toFixed(2)}`;
+    trailInfo = `RUN @ ${CFG.TRAIL_PHASE_3}% — 60% trail → ${newSL.toFixed(2)}`;
   }
 
   // Continuous trailing for phase 2 & 3 (ratchet — only moves favourably)
@@ -3341,24 +3328,24 @@ function checkDemoPositions() {
     sessionPnL += pnl;
     if(pnl > 0) {
       wins++; consecutiveWins++; consecutiveLosses = 0;
-      if(riskHalved) { riskHalved = false; addSignal('info',`✓ Win — risk restored to normal (${consecutiveWins}W streak)`, null); }
+      if(riskHalved) { riskHalved = false; addSignal('info',`Win — risk restored to normal (${consecutiveWins}W streak)`, null); }
     } else {
       losses++; consecutiveLosses++; consecutiveWins = 0;
       if(consecutiveLosses >= SAFETY.CONSEC_LOSS_HALVE) {
         riskHalved = true;
-        addSignal('warn',`⚠ ${consecutiveLosses}× consecutive losses — risk halved until next win`, null);
+        addSignal('warn',`${consecutiveLosses}x consecutive losses — risk halved until next win`, null);
       }
     }
     if(hardFloor > 0 && demoBalance <= hardFloor) {
       tradingLocked = true; botOn = false; syncBotButtons();
-      addSignal('warn',`🚨 HARD FLOOR REACHED — balance $${demoBalance.toFixed(2)}. Bot stopped permanently for this session.`, null);
+      addSignal('warn',`HARD FLOOR REACHED — balance $${demoBalance.toFixed(2)}. Bot stopped permanently for this session.`, null);
     }
     const startRef = Math.max(1, demoStartBal || 1);
     const totalLoss = Math.max(0, startRef - demoBalance);
     const ddPct = (totalLoss / startRef) * 100;
     if(!tradingLocked && CFG.MAX_DD_PCT > 0 && ddPct >= CFG.MAX_DD_PCT) {
       tradingLocked = true; botOn = false; syncBotButtons();
-      addSignal('warn',`🔴 Daily DD ${CFG.MAX_DD_PCT.toFixed(1)}% hit — lost $${totalLoss.toFixed(2)} this session. Bot locked.`, null);
+      addSignal('warn',`Daily DD ${CFG.MAX_DD_PCT.toFixed(1)}% hit — lost $${totalLoss.toFixed(2)} this session. Bot locked.`, null);
     }
     const log = demoTradeLog.find(t=>t.id===pos.id);
     if(log) {
@@ -3374,7 +3361,7 @@ function checkDemoPositions() {
     const dirLbl = pos.dir==='UP'?'BUY':'SELL';
     // With epoch+price dedup, no need to reset indices on close.
     // Cooldown period (20 min) naturally prevents re-entry on same level.
-    addSignal(pnl>0?'buy':'sell',`DEMO ${dirLbl} closed [${reason}] PnL ${pnl>=0?'+':''}${pnl.toFixed(2)}`, mid);
+    addSignal(pnl>0?'buy':'sell',`${dirLbl} CLOSED [${reason}] PnL: ${pnl>=0?'+':''}$${pnl.toFixed(2)} @ ${mid.toFixed(2)}`, mid);
     updateLastTrade({id:pos.id,dir:dirLbl,entry:pos.entry,status:reason,pnl});
 
     // ── POST-TP CONTINUATION EVALUATION STATE ──
@@ -3387,7 +3374,7 @@ function checkDemoPositions() {
         tp: pos.tpPrice,
         entry: pos.entry,
       };
-      addSignal('info', `⏳ POST-TP EVAL — waiting for continuation confirmation or fresh setup`, null);
+      addSignal('info', `POST-TP EVAL — waiting for continuation confirmation or fresh setup`, null);
     } else {
       postTPState = null;
     }
@@ -3486,11 +3473,6 @@ function closeDrawer() {
 
 // ── SETTINGS ──
 function loadSettings() {
-  // Restore Twelve Data API key
-  try {
-    const savedKey = localStorage.getItem('pabotTDKey');
-    if (savedKey) { TD_API_KEY = savedKey; $('tdApiKey').value = savedKey; }
-  } catch(e) {}
   try {
     const saved = JSON.parse(localStorage.getItem('pabotCFG') || '{}');
     if(saved.DEMO_BALANCE > 0) { CFG.DEMO_BALANCE = saved.DEMO_BALANCE; demoBalance = saved.DEMO_BALANCE; demoStartBal = saved.DEMO_BALANCE; }
@@ -3558,7 +3540,7 @@ function saveSettings() {
       TRAIL_DIST: CFG.TRAIL_DIST,
     }));
   } catch(e) {}
-  // In Twelve Data mode there is no real broker balance — always use demoBalance
+  // No real broker balance — always use demoBalance
   if (newBal > 0) {
     demoBalance = newBal; demoStartBal = newBal; demoPositions = [];
     tradingLocked = false; consecutiveLosses = 0; consecutiveWins = 0; riskHalved = false;
@@ -3676,7 +3658,7 @@ function checkRiskOverflow(slDist, quality, useBalance) {
   const blocked = CFG.RISK_MODE === 'BLOCK' && overflow > 1.5;
   let warning = '';
   if(overflow > 1.0) {
-    warning = `⚠ RISK OVERFLOW: ${(actualRisk/targetRisk*100).toFixed(0)}% actual vs ${riskPct.toFixed(1)}% target (${overflow.toFixed(1)}×)`;
+    warning = `RISK OVERFLOW: ${(actualRisk/targetRisk*100).toFixed(0)}% actual vs ${riskPct.toFixed(1)}% target (${overflow.toFixed(1)}×)`;
   }
   return { ok: !blocked, lots, actualRisk, targetRisk, overflow, blocked, warning, riskPct, qMult, growthFactor };
 }
@@ -3740,237 +3722,7 @@ function _processTick(midPrice, epochSec) {
   }
 }
 
-// Bootstrap candle history from OANDA v20 instruments/candles REST endpoint.
-// ── Fetch historical candles from Twelve Data for M1 / M5 / M15 ──
-async function _fetchTDHistory() {
-  if (!TD_API_KEY) return false;
-  const specs = [
-    { gran: 60,  interval: '1min',  count: 500 },
-    { gran: 300, interval: '5min',  count: 200 },
-    { gran: 900, interval: '15min', count: 100 },
-  ];
-  let anyLoaded = false;
-  for (const { gran, interval, count } of specs) {
-    try {
-      const url = `${TD_BASE}/time_series?symbol=${encodeURIComponent(TD_SYMBOL)}&interval=${interval}&outputsize=${count}&apikey=${TD_API_KEY}`;
-      const res  = await fetch(url);
-      const json = await res.json();
-      if (json.status === 'error') {
-        addSignal('warn', `TD history ${interval}: ${json.message}`, null);
-        continue;
-      }
-      const values = json.values || [];
-      // TD returns newest-first — reverse so array is chronological
-      const arr = values.slice().reverse().map(v => ({
-        epoch: Math.floor(new Date(v.datetime.replace(' ', 'T') + 'Z').getTime() / 1000),
-        open:  +v.open, high: +v.high, low: +v.low, close: +v.close,
-      }));
-      if (arr.length) {
-        candles[gran] = arr;
-        addSignal('info', `✓ ${arr.length} ${interval} candles loaded`, null);
-        anyLoaded = true;
-      }
-    } catch(e) {
-      addSignal('warn', `TD history ${interval}: ${e.message}`, null);
-    }
-  }
-  if (anyLoaded) drawChart();
-  return anyLoaded;
-}
-
-// ── Poll Twelve Data every 10 s for the latest M1 price tick ──
-async function _tdPollOnce() {
-  if (!TD_API_KEY) return;
-  try {
-    const url = `${TD_BASE}/time_series?symbol=${encodeURIComponent(TD_SYMBOL)}&interval=1min&outputsize=2&apikey=${TD_API_KEY}`;
-    const res  = await fetch(url);
-    const json = await res.json();
-    if (json.status === 'error') {
-      addSignal('warn', `TD poll: ${json.message}`, null);
-      return;
-    }
-    const values = json.values || [];
-    if (!values.length) return;
-
-    // values[0] = newest (forming candle), values[1] = last completed
-    const forming = values[0];
-    const completed = values[1];
-
-    const closePrice = parseFloat(forming.close);
-    if (!closePrice) return;
-
-    // Dynamic session-aware spread — calibrated to Deriv frxXAUUSD real data
-    // (flat 0.20 was too optimistic; Deriv can spike to 1.20+ during news/thin sessions)
-    const _btHour = new Date(forming.datetime.replace(' ', 'T') + 'Z').getUTCHours();
-    const _btNs   = (typeof newsEngine !== 'undefined' && newsEngine.state) ? newsEngine.state : 'NORMAL';
-    let spread;
-    if      (_btNs === 'PRE_RELEASE' || _btNs === 'DEFENSIVE') spread = 1.10 + Math.random() * 0.20; // news spike: 1.10–1.30
-    else if (_btNs === 'AWARE'       || _btNs === 'CAUTION'  ) spread = 0.55 + Math.random() * 0.15; // pre-news:  0.55–0.70
-    else if (_btHour >= 0  && _btHour < 3 ) spread = 0.55 + Math.random() * 0.15; // dead Asian (00-03): 0.55–0.70
-    else if (_btHour >= 3  && _btHour < 6 ) spread = 0.42 + Math.random() * 0.12; // late Asian (03-06): 0.42–0.54
-    else if (_btHour >= 6  && _btHour < 7 ) spread = 0.35 + Math.random() * 0.10; // pre-London (06-07): 0.35–0.45
-    else if (_btHour >= 7  && _btHour < 9 ) spread = 0.22 + Math.random() * 0.08; // London open (07-09): 0.22–0.30
-    else if (_btHour >= 9  && _btHour < 13) spread = 0.25 + Math.random() * 0.08; // London mid  (09-13): 0.25–0.33
-    else if (_btHour >= 13 && _btHour < 15) spread = 0.18 + Math.random() * 0.07; // NY/LON overlap tightest: 0.18–0.25
-    else if (_btHour >= 15 && _btHour < 20) spread = 0.30 + Math.random() * 0.10; // NY afternoon (15-20): 0.30–0.40
-    else                                     spread = 0.40 + Math.random() * 0.12; // late NY (20-00): 0.40–0.52
-    spread = +spread.toFixed(2);
-    bid = closePrice - spread / 2;
-    ask = closePrice + spread / 2;
-    const newMid = (bid + ask) / 2;
-    const epochSec = Math.floor(new Date(forming.datetime.replace(' ', 'T') + 'Z').getTime() / 1000);
-
-    // Update price display
-    if (mid && newMid !== mid) {
-      const diff = newMid - mid, dir = diff > 0 ? 'up' : 'dn';
-      const chgEl = $('priceChg');
-      chgEl.textContent = `${diff > 0 ? '+' : ''}${diff.toFixed(2)}`;
-      chgEl.className   = `price-chg ${dir}`;
-      flashPrice(dir);
-    }
-    prevMid = mid; mid = newMid;
-    $('priceMain').textContent = mid.toFixed(2);
-    updatePriceBadges(bid, ask);
-
-    // If the completed candle is newer than our last stored M1 bar, add it
-    if (completed) {
-      const compEpoch = Math.floor(new Date(completed.datetime.replace(' ', 'T') + 'Z').getTime() / 1000);
-      const m1 = candles[60];
-      if (!m1.length || compEpoch > m1[m1.length - 1].epoch) {
-        m1.push({
-          epoch: compEpoch,
-          open:  +completed.open, high: +completed.high,
-          low:   +completed.low,  close: +completed.close,
-        });
-        // Trim to 600 bars max
-        if (m1.length > 600) m1.splice(0, m1.length - 600);
-      }
-    }
-
-    // Feed into candle builder and strategy
-    _processTick(newMid, epochSec);
-    checkDemoPositions();
-    if (!replay.active) runStrategy();
-
-  } catch(e) {
-    addSignal('warn', `TD poll error: ${e.message}`, null);
-  }
-}
-
-// ── LOCAL PYTHON SERVER — WebSocket client ────────────────────────────────────
-// Attempts to connect to the local server.py candle engine on ws://localhost:8765.
-// On success: 1-second clean ticks flow directly into _processTick.
-// On failure: silently falls back to Twelve Data 10-second polling.
-function _wsConnect() {
-  return new Promise(resolve => {
-    let resolved = false;
-    let wasOpen  = false;   // true only after ws.onopen fires — guards reconnect logic
-    const done = (ok) => { if (!resolved) { resolved = true; resolve(ok); } };
-
-    let ws;
-    try { ws = new WebSocket('ws://localhost:8765'); }
-    catch (_) { done(false); return; }
-
-    // Timeout — if no open event within 2 s, give up and fall through to TD
-    const timeout = setTimeout(() => {
-      ws.onclose = null;   // suppress onclose so it doesn't trigger the reconnect branch
-      ws.close();
-      done(false);
-    }, 2000);
-
-    ws.onopen = () => {
-      clearTimeout(timeout);
-      wasOpen      = true;
-      _localWS     = ws;
-      _wsConnected = true;
-      setConn('on');
-      authed = true;
-      addSignal('info', '🔗 Local Python candle server detected — 1 s live ticks active', null);
-      done(true);
-    };
-
-    ws.onmessage = evt => {
-      try {
-        const msg = JSON.parse(evt.data);
-
-        // ── Tick: update price display + feed candle builder ──
-        if (msg.type === 'tick') {
-          bid = msg.bid; ask = msg.ask;
-          const newMid  = msg.mid;
-          const epochSec = msg.epoch;
-
-          if (mid && newMid !== mid) {
-            const diff = newMid - mid, dir = diff > 0 ? 'up' : 'dn';
-            const chgEl = $('priceChg');
-            chgEl.textContent = `${diff > 0 ? '+' : ''}${diff.toFixed(2)}`;
-            chgEl.className   = `price-chg ${dir}`;
-            flashPrice(dir);
-          }
-          prevMid = mid; mid = newMid;
-          $('priceMain').textContent = mid.toFixed(2);
-          updatePriceBadges(bid, ask);
-
-          // Feed into the internal candle engine (same path as TD polling)
-          _processTick(newMid, epochSec);
-          checkDemoPositions();
-          if (!replay.active) runStrategy();
-        }
-
-        // ── Completed bar: push directly into the candles array ──
-        else if (msg.type === 'bar') {
-          const arr = candles[msg.tf];
-          if (arr && msg.bar) {
-            const last = arr.length ? arr[arr.length - 1] : null;
-            if (!last || msg.bar.epoch > last.epoch) {
-              arr.push(msg.bar);
-              const cap = msg.tf === 60 ? 600 : msg.tf === 300 ? 200 : 100;
-              if (arr.length > cap) arr.shift();
-            }
-          }
-        }
-
-        // ── Forming bar: keep the live bar in sync ──────────────
-        else if (msg.type === 'forming') {
-          const arr = candles[msg.tf];
-          if (arr && msg.bar) {
-            const last = arr.length ? arr[arr.length - 1] : null;
-            if (last && last.epoch === msg.bar.epoch) {
-              arr[arr.length - 1] = msg.bar;   // update in-place
-            } else if (!last || msg.bar.epoch > last.epoch) {
-              arr.push(msg.bar);
-              const cap = msg.tf === 60 ? 601 : msg.tf === 300 ? 201 : 101;
-              if (arr.length > cap) arr.shift();
-            }
-          }
-        }
-
-      } catch (_) { /* malformed message — ignore */ }
-    };
-
-    ws.onerror = () => {
-      clearTimeout(timeout);
-      done(false);   // will fall through to TD polling in connect()
-    };
-
-    ws.onclose = () => {
-      _wsConnected = false; _localWS = null;
-      if (wasOpen) {
-        // Real connection was live and then dropped — attempt reconnect
-        setConn('wait');
-        addSignal('warn', '⚠ Python candle server disconnected — reconnecting in 5 s…', null);
-        setTimeout(() => {
-          _wsConnect().then(ok => { if (!ok) connect(); });
-        }, 5000);
-      }
-      // If wasOpen is false: initial connection failed — onclose from timeout ws.close()
-      // is suppressed by setting ws.onclose = null above, so this branch won't fire.
-    };
-  });
-}
-
 // ── DERIV LIVE FEED ENGINE ──────────────────────────────────────────────────
-// Priority chain: local Python server (port 8765) → Deriv WebSocket → TD poll
-//
 // Deriv provides true tick-by-tick bid/ask on frxXAUUSD at no cost.
 // Historical candles are fetched via the ticks_history request on connect.
 
@@ -3978,7 +3730,7 @@ function _connectDeriv() {
   if (_derivWS) { try { _derivWS.close(); } catch(_) {} _derivWS = null; }
   if (_derivReconnectTimer) { clearTimeout(_derivReconnectTimer); _derivReconnectTimer = null; }
 
-  addSignal('info', '🔌 Connecting to Deriv WebSocket…', null);
+  addSignal('info', 'Connecting to Deriv WebSocket...', null);
   setConn('wait');
 
   const ws = new WebSocket(DERIV_WS_URL);
@@ -3987,7 +3739,7 @@ function _connectDeriv() {
   ws.onopen = () => {
     setConn('on');
     authed = true;
-    addSignal('info', '✓ Deriv connected — XAUUSD live tick feed active', null);
+    addSignal('info', 'Deriv connected — XAUUSD live tick feed active', null);
     // Load historical OHLC bars for all three timeframes
     _derivRequestHistory(ws, 60,  500);
     _derivRequestHistory(ws, 300, 200);
@@ -4003,7 +3755,7 @@ function _connectDeriv() {
   ws.onclose = () => {
     _derivWS = null;
     setConn('wait');
-    addSignal('warn', '⚠ Deriv disconnected — reconnecting in 5 s…', null);
+    addSignal('warn', 'Deriv disconnected — reconnecting in 5 s...', null);
     _derivReconnectTimer = setTimeout(_connectDeriv, 5000);
   };
 
@@ -4070,7 +3822,7 @@ function _handleDerivMsg(msg) {
     if (arr.length) {
       candles[gran] = arr;
       const label = gran === 60 ? '1min' : gran === 300 ? '5min' : '15min';
-      addSignal('info', `✓ ${arr.length} ${label} candles loaded from Deriv`, null);
+      addSignal('info', `${arr.length} ${label} candles loaded from Deriv`, null);
       drawChart();
     }
   }
@@ -4099,21 +3851,11 @@ function _handleDerivMsg(msg) {
   }
 }
 
-// ── PRIMARY CONNECT — priority: local Python → Deriv → TD (legacy fallback) ──
-async function connect() {
-  // Tear down any existing connections cleanly
-  if (_tdPollTimer) { clearInterval(_tdPollTimer); _tdPollTimer = null; }
-  _tdPollActive = false;
-  if (_localWS) { _localWS.close(); _localWS = null; _wsConnected = false; }
+// ── PRIMARY CONNECT — Deriv WebSocket (primary and only data source) ──
+function connect() {
   if (_derivWS) { try { _derivWS.close(); } catch(_) {} _derivWS = null; }
   if (_derivReconnectTimer) { clearTimeout(_derivReconnectTimer); _derivReconnectTimer = null; }
   setConn('wait');
-
-  // 1️⃣  Local Python candle server (ws://localhost:8765)
-  const wsOk = await _wsConnect();
-  if (wsOk) return;
-
-  // 2️⃣  Deriv WebSocket — free, tick-level XAUUSD feed
   _connectDeriv();
 }
 
@@ -4201,7 +3943,7 @@ function runStrategy() {
     const dd = ((curStart - curBal) / curStart) * 100;
     if (dd >= CFG.MAX_DD_PCT) {
       botOn = false; tradingLocked = true; syncBotButtons();
-      addSignal('warn', `Max drawdown ${CFG.MAX_DD_PCT}% hit. Bot stopped.`, null);
+      addSignal('warn', `Max drawdown ${CFG.MAX_DD_PCT}% reached. Bot stopped.`, null);
       return;
     }
   }
@@ -4231,7 +3973,7 @@ function runStrategy() {
     const hasGoodSetup = (bs.signal && bs.score >= 9) || (ss.signal && ss.score >= 9);
     if (hasGoodSetup) {
       postTPState = null; // clear post-TP block for high-quality setups
-      addSignal('info', `✅ Post-TP bypassed — Good/A+ setup detected. Trading immediately.`, null);
+      addSignal('info', `Post-TP bypassed — Good/A+ setup detected. Trading immediately.`, null);
     } else {
       const cont = evalContinuation(postTPState.dir);
       if(!cont.approved) {
@@ -4240,7 +3982,7 @@ function runStrategy() {
         if(now % 10000 < 1000) { // log every ~10s to avoid spam
           const m5tag  = cont.m5Bias  ? ` M5:${cont.m5Bias.toUpperCase()}`  : '';
           const m1tag  = cont.m15Bias ? ` M1:${cont.m15Bias.toUpperCase()}` : '';
-          addSignal('info', `⏳ Post-TP eval: score ${cont.score}/${cont.maxScore}${m5tag}${m1tag} — waiting for M5 HTF re-alignment (${secLeft}s)`, null);
+          addSignal('info', `Post-TP eval: score ${cont.score}/${cont.maxScore}${m5tag}${m1tag} — waiting for M5 re-align (${secLeft}s)`, null);
         }
         // Only allow fresh setup in OPPOSITE direction (fading exhaustion)
         // or wait until eval window expires for same-direction re-entry
@@ -4258,13 +4000,13 @@ function runStrategy() {
         // Continuation approved
         if(!postTPState.approved) {
           postTPState.approved = true;
-          addSignal('info', `✅ Continuation APPROVED — score ${cont.score}/${cont.maxScore}. Scanning for re-entry…`, null);
+          addSignal('info', `Continuation APPROVED — score ${cont.score}/${cont.maxScore}. Scanning for re-entry…`, null);
         }
       }
     }
   } else if(postTPState && now >= postTPState.evalEndTime) {
     // Eval window expired — allow fresh setup of any kind
-    addSignal('info', `⏰ Post-TP window expired — returning to normal scan`, null);
+    addSignal('info', `Post-TP window expired — returning to normal scan`, null);
     postTPState = null;
   }
 
@@ -4291,7 +4033,7 @@ function runStrategy() {
     }
     if (bs.htf?.m5Bias === 'bear') reasons.push('M1 conflict');
     if (!bs.conds.bSess) reasons.push('off-session');
-    addSignal('info', `🔍 BUY setup score:${bs.score} REJECTED — ${reasons.join(' | ')}`, mid);
+    addSignal('info', `BUY setup score:${bs.score} REJECTED — ${reasons.join(' | ')}`, mid);
   }
   if (ss.score >= 6 && !ss.signal && shouldDebug) {
     const reasons = [];
@@ -4308,7 +4050,7 @@ function runStrategy() {
     }
     if (ss.htf?.m5Bias === 'bull') reasons.push('M1 conflict');
     if (!ss.conds.sSess) reasons.push('off-session');
-    addSignal('info', `🔍 SELL setup score:${ss.score} REJECTED — ${reasons.join(' | ')}`, mid);
+    addSignal('info', `SELL setup score:${ss.score} REJECTED — ${reasons.join(' | ')}`, mid);
   }
 
   // ── EPOCH + PRICE DEDUPLICATION — stable across window shifts ──
@@ -4339,16 +4081,15 @@ function runStrategy() {
     // NOTE: Do NOT reset bear dedup — maintain protection against 
     // rapid direction flips on the same liquidity level
     const sess = strategy.activeSession() || 'SESSION';
-    const kzTag = strategy.activeKillZone() ? ` 🎯${strategy.activeKillZone()}` : '';
+    const kzTag = strategy.activeKillZone() ? ` [${strategy.activeKillZone()}]` : '';
     const grade = bs.quality >= 3 ? '★★★' : bs.quality === 2 ? '★★' : '★';
-    const newsTag = newsEngine.state === 'CAUTION' ? ' ⚠CAUTION' : '';
+    const newsTag = newsEngine.state === 'CAUTION' ? ' [CAUTION]' : '';
     const htfTag = bs.htf
       ? ` [M5:${bs.htf.m15Bias.toUpperCase()} M1:${bs.htf.m5Bias.toUpperCase()} HTF:${bs.htf.score}/10${bs.htf.strongSetupBypass ? ' BYPASS' : ''}]`
       : '';
-    const ctTag = (bs.htf && bs.htf.counterTrendOk) ? ' ⚡CT' : '';
-    addSignal('buy', `[${sess}]${kzTag} BUY ${grade} score:${bs.score}${htfTag}${ctTag} — M5 HTF+M1 sniper confirmed${newsTag}`, mid);
-    if (authed) placeLiveTrade('UP', bs.ob);
-    else placeDemoTrade('UP', bs.ob, bs.quality);
+    const ctTag = (bs.htf && bs.htf.counterTrendOk) ? ' CT' : '';
+    addSignal('buy', `[${sess}]${kzTag} BUY ${grade} score:${bs.score}${htfTag}${ctTag} — M5+M1 sniper confirmed${newsTag}`, mid);
+    placeDemoTrade('UP', bs.ob, bs.quality);
   } else if (ss.signal && ss.sweepEpoch !== undefined && !isBearSweepDup) {
     lastSigMs = now;
     lastTradedBearSweepIdx = ss.sweepIdx;       // keep for backward compat
@@ -4356,26 +4097,24 @@ function runStrategy() {
     lastTradedBearSweepPrice = ss.sweepHigh;    // price level dedup
     // NOTE: Do NOT reset bull dedup — maintain protection
     const sess = strategy.activeSession() || 'SESSION';
-    const kzTag = strategy.activeKillZone() ? ` 🎯${strategy.activeKillZone()}` : '';
+    const kzTag = strategy.activeKillZone() ? ` [${strategy.activeKillZone()}]` : '';
     const grade = ss.quality >= 3 ? '★★★' : ss.quality === 2 ? '★★' : '★';
-    const newsTag = newsEngine.state === 'CAUTION' ? ' ⚠CAUTION' : '';
+    const newsTag = newsEngine.state === 'CAUTION' ? ' [CAUTION]' : '';
     const htfTag = ss.htf
       ? ` [M5:${ss.htf.m15Bias.toUpperCase()} M1:${ss.htf.m5Bias.toUpperCase()} HTF:${ss.htf.score}/10${ss.htf.strongSetupBypass ? ' BYPASS' : ''}]`
       : '';
-    const ctTag = (ss.htf && ss.htf.counterTrendOk) ? ' ⚡CT' : '';
-    addSignal('sell', `[${sess}]${kzTag} SELL ${grade} score:${ss.score}${htfTag}${ctTag} — M5 HTF+M1 sniper confirmed${newsTag}`, mid);
-    if (authed) placeLiveTrade('DOWN', ss.ob);
-    else placeDemoTrade('DOWN', ss.ob, ss.quality);
+    const ctTag = (ss.htf && ss.htf.counterTrendOk) ? ' CT' : '';
+    addSignal('sell', `[${sess}]${kzTag} SELL ${grade} score:${ss.score}${htfTag}${ctTag} — M5+M1 sniper confirmed${newsTag}`, mid);
+    placeDemoTrade('DOWN', ss.ob, ss.quality);
   }
 }
 
 // ── LIVE TRADE (OANDA) ──
 // Places a market order via the OANDA v20 Orders API.
-// Live order placement — demo-only with Twelve Data feed (no broker API)
+// Live order placeholder — all trading runs through the demo engine
 async function placeLiveTrade(dir, ob) {
-  // Twelve Data provides price data only; live order execution requires a broker API.
-  // All trading runs through the demo engine below.
-  addSignal('info', `[Demo] Signal: ${dir} — routed to demo engine`, null);
+  // All trading runs through the demo engine (placeDemoTrade).
+  // placeLiveTrade is unused; all trades go through placeDemoTrade
 }
 
 // ── TOAST ──
@@ -4408,12 +4147,12 @@ function startBot() {
   if(!authed) demoStartBal = demoBalance;
   if(authed && !startBalance && balance) { startBalance=balance; CFG.START_BALANCE=balance; }
   syncBotButtons();
-  addSignal('info','Bot STARTED — M5 HTF → M1 confirm + execute (M15 EQ reference only). Scanning for full-confluence M1 setups…',null);
+  addSignal('info','Bot STARTED — Scanning for M5 HTF + M1 sniper setups',null);
 }
 function stopBot() {
   botOn=false;
   syncBotButtons();
-  addSignal('info','Bot STOPPED',null);
+  addSignal('info','Bot STOPPED — no new trades will be taken',null);
 }
 
 $('startBtn').addEventListener('click', startBot);
@@ -4422,14 +4161,6 @@ $('startBtnM').addEventListener('click', startBot);
 $('stopBtnM').addEventListener('click', stopBot);
 
 $('authBtn').addEventListener('click', ()=>{
-  const key = $('tdApiKey').value.trim();
-  if (!key) {
-    addSignal('warn', 'Enter your Twelve Data API key before connecting.', null);
-    return;
-  }
-  TD_API_KEY = key;
-  try { localStorage.setItem('pabotTDKey', key); } catch(e) {}
-  addSignal('info', 'Twelve Data API key set — connecting…', null);
   connect();
 });
 
@@ -4546,7 +4277,7 @@ const replay = {
     this._enterReplayMode();
     this._tick();
     this._scheduleNext();
-    addSignal('info', `▶ Replay started — ${this.data.length.toLocaleString()} candles`, null);
+    addSignal('info', `Replay started — ${this.data.length.toLocaleString()} candles`, null);
   },
 
   stop() {
@@ -4561,7 +4292,7 @@ const replay = {
     }
     strategy._btEpoch = null;
     this._exitReplayMode();
-    addSignal('info', '⏹ Replay stopped — returned to live data', null);
+    addSignal('info', 'Replay stopped — returned to live data', null);
   },
 
   togglePause() {
@@ -4851,10 +4582,10 @@ const replay = {
     const ns = btNewsStateAt(epoch, this.newsEvents || []);
     // Log news context briefly (throttled to avoid spam)
     if (ns.state !== 'NORMAL' && (!this._lastNewsBlock || (epoch - this._lastNewsBlock) > 900)) {
-      const tag = ns.state === 'PRE_RELEASE'  ? `⚡ RELEASE WINDOW`
-                : ns.state === 'POST_RELEASE' ? `📈 POST-RELEASE MOMENTUM`
-                :                               `📰 ${ns.state}`;
-      addSignal('info', `${tag} [${ns.event}] — ${ns.note} · lots×${ns.lotMult.toFixed(2)} sprd×${ns.spreadMult.toFixed(1)}`, null);
+      const tag = ns.state === 'PRE_RELEASE'  ? `RELEASE WINDOW`
+                : ns.state === 'POST_RELEASE' ? `POST-RELEASE MOMENTUM`
+                :                               `NEWS:${ns.state}`;
+      addSignal('info', `${tag} [${ns.event}] — ${ns.note} | lots x${ns.lotMult.toFixed(2)} sprd x${ns.spreadMult.toFixed(1)}`, null);
       this._lastNewsBlock = epoch;
     }
 
@@ -4873,7 +4604,7 @@ const replay = {
       if (ns.state === 'PRE_RELEASE' && sig.quality < 2) return; // skip ★ during release spike
       if (ns.state !== 'NORMAL') {
         const noteStr = ns.note ? ` · ${ns.note}` : '';
-        addSignal('info', `📰 BT ${ns.state} [${ns.event}]${noteStr} — trading with lots×${ns.lotMult.toFixed(2)}`, null);
+        addSignal('info', `BT ${ns.state} [${ns.event}]${noteStr} — trading with lots×${ns.lotMult.toFixed(2)}`, null);
       }
       this.replayLastSigEpoch = epoch;
       this._openReplayPosition(sig, epoch, price);
@@ -4916,7 +4647,7 @@ const replay = {
     // ── RISK OVERFLOW CHECK ──
     const riskCheck = checkRiskOverflow(slDist, sig.quality, this.replayBal);
     if(riskCheck.blocked) {
-      addSignal('warn', `⛔ BT BLOCKED: Risk overflow ${riskCheck.overflow.toFixed(1)}× > 1.5× target`, price);
+      addSignal('warn', `BT BLOCKED: Risk overflow ${riskCheck.overflow.toFixed(1)}× > 1.5× target`, price);
       return;
     }
     if(riskCheck.warning) {
@@ -4953,9 +4684,9 @@ const replay = {
     };
     this.positions.push(pos);
     const grade = sig.quality >= 3 ? '★★★' : sig.quality === 2 ? '★★' : '★';
-    const newsTag = ns.state !== 'NORMAL' ? ` [📰${ns.state} sprd:${dynSpread}pt]` : ` [sprd:${dynSpread}pt slip:${slip.toFixed(2)}pt]`;
-    const riskTag = riskCheck.overflow > 1.0 ? ` [⚠${riskCheck.overflow.toFixed(1)}×risk]` : '';
-    addSignal(isBuy ? 'buy' : 'sell', `REPLAY ${isBuy ? 'BUY' : 'SELL'} ${pos.lots.toFixed(2)}L ${grade}${newsTag}${riskTag} @ ${entryPrice.toFixed(2)}`, price);
+    const newsTag = ns.state !== 'NORMAL' ? ` [NEWS:${ns.state} sprd:${dynSpread}pt]` : ` [sprd:${dynSpread}pt slip:${slip.toFixed(2)}pt]`;
+    const riskTag = riskCheck.overflow > 1.0 ? ` [RISK:${riskCheck.overflow.toFixed(1)}x]` : '';
+    addSignal(isBuy ? 'buy' : 'sell', `[BT] ${isBuy ? 'BUY' : 'SELL'} ${pos.lots.toFixed(2)}L ${grade}${newsTag}${riskTag} @ ${entryPrice.toFixed(2)}`, price);
   },
 
   _renderFrame() {
@@ -5066,7 +4797,7 @@ const replay = {
     renderBtResults(result);
     btRunHistory.push(result);
     renderMultiRunTable();
-    addSignal('info', `✓ Replay complete — ${this.trades.length} trades · PF ${result.profitFactor ?? '∞'} · WR ${result.winRate}%`, null);
+    addSignal('info', `Replay complete — ${this.trades.length} trades · PF ${result.profitFactor ?? '∞'} · WR ${result.winRate}%`, null);
   },
 
   _buildEquityCurve() {
@@ -5153,81 +4884,86 @@ function btCheckReady() {
 });
 
 async function fetchBtCandles(granularity, startEpoch, endEpoch, onProgress) {
-  // Fetches historical candles from Twelve Data for backtest.
-  // TD free tier returns up to 5000 bars per request.
-  const intervalMap = { 60: '1min', 300: '5min', 900: '15min' };
-  const interval = intervalMap[granularity] || '1min';
+  // Fetches historical OHLC candles from Deriv ticks_history API for backtest.
+  // Deriv returns up to 5000 candles per request; paginates automatically.
   const all = [];
+  let cursor = endEpoch;
+  let reqCount = 0;
   btFetching = true;
 
-  try {
-    if (!TD_API_KEY) {
-      addSignal('warn', 'BT: Twelve Data API key not set — enter it in Setup first', null);
-      return null;
-    }
-    if (btCancelled) return null;
-
-    // Build date strings TD expects: YYYY-MM-DD HH:MM:SS
-    const fmtDT = (epochSec) => {
-      const d = new Date(epochSec * 1000);
-      const pad = n => String(n).padStart(2, '0');
-      return `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:00`;
-    };
-
-    // TD can return up to 5000 bars; paginate by shifting the end date back if needed
-    let cursor = endEpoch;
-    let reqCount = 0;
-    const PAGE = 5000;
-
-    while (cursor > startEpoch) {
-      if (btCancelled) return null;
-      const startDT = fmtDT(startEpoch);
-      const endDT   = fmtDT(cursor);
-      const url = `${TD_BASE}/time_series?symbol=${encodeURIComponent(TD_SYMBOL)}&interval=${interval}&start_date=${encodeURIComponent(startDT)}&end_date=${encodeURIComponent(endDT)}&outputsize=${PAGE}&apikey=${TD_API_KEY}`;
-
-      let data;
-      try {
-        const res = await fetch(url);
-        data = await res.json();
-      } catch(e) {
-        addSignal('warn', `BT: TD request failed — ${e.message}`, null);
-        break;
-      }
-      if (data.status === 'error') {
-        addSignal('warn', `BT: TD error — ${data.message}`, null);
-        break;
-      }
-      const values = data.values || [];
-      if (!values.length) break;
-
-      // TD returns newest-first — reverse to chronological
-      const chunk = values.slice().reverse().map(v => ({
-        epoch: Math.floor(new Date(v.datetime.replace(' ', 'T') + 'Z').getTime() / 1000),
-        open: +v.open, high: +v.high, low: +v.low, close: +v.close,
+  const fetchPage = (start, end, gran) => new Promise((resolve, reject) => {
+    let ws;
+    try { ws = new WebSocket(DERIV_WS_URL); }
+    catch(e) { reject(e); return; }
+    const timer = setTimeout(() => {
+      ws.onclose = null; ws.close();
+      reject(new Error('Deriv request timed out after 20s'));
+    }, 20000);
+    ws.onopen = () => {
+      ws.send(JSON.stringify({
+        ticks_history   : DERIV_SYMBOL,
+        adjust_start_time: 1,
+        start           : start,
+        end             : end,
+        count           : 5000,
+        granularity     : gran,
+        style           : 'candles',
       }));
+    };
+    ws.onmessage = evt => {
+      clearTimeout(timer);
+      ws.onclose = null; ws.close();
+      try {
+        const msg = JSON.parse(evt.data);
+        if (msg.error) { reject(new Error(msg.error.message)); return; }
+        if (msg.msg_type === 'candles' && msg.candles) {
+          resolve(msg.candles.map(c => ({
+            epoch: +c.epoch, open: +c.open, high: +c.high, low: +c.low, close: +c.close
+          })));
+        } else { resolve([]); }
+      } catch(e) { reject(e); }
+    };
+    ws.onerror = () => { clearTimeout(timer); reject(new Error('WebSocket error')); };
+    ws.onclose = () => { clearTimeout(timer); };
+  });
 
-      all.unshift(...chunk);
+  try {
+    while (cursor > startEpoch && !btCancelled) {
+      let chunk;
+      try {
+        chunk = await fetchPage(startEpoch, cursor, granularity);
+      } catch(e) {
+        addSignal('warn', `BT data fetch error: ${e.message}`, null);
+        break;
+      }
+      if (!chunk || !chunk.length) break;
+
+      // Merge into all[], filtering to requested date range
+      for (const bar of chunk) {
+        if (bar.epoch >= startEpoch && bar.epoch <= endEpoch) all.push(bar);
+      }
+
       reqCount++;
       if (onProgress) onProgress(reqCount, chunk.length);
 
-      // If we got fewer than PAGE bars, we've reached the start
-      if (values.length < PAGE) break;
+      // Fewer than 5000 bars = reached start of available history
+      if (chunk.length < 5000) break;
 
-      // Move cursor back past the earliest bar we received
+      // Move cursor back before the earliest bar received
       cursor = chunk[0].epoch - granularity;
       if (cursor <= startEpoch) break;
-      await new Promise(r => setTimeout(r, 250)); // respect TD rate limits
+      await new Promise(r => setTimeout(r, 400)); // polite rate limit
     }
   } finally {
     btFetching = false;
   }
 
   all.sort((a, b) => a.epoch - b.epoch);
-  const filtered = all.filter(c => c.epoch >= startEpoch && c.epoch <= endEpoch);
-  if (filtered.length < 500 && btSelectedDays > 7) {
-    addSignal('warn', `⚠ Data shortage: only ${filtered.length} bars found. Free TD tier has limited history — upgrade for more.`, null);
+  const filtered = all.filter((c, i, arr) => i === 0 || c.epoch !== arr[i-1].epoch);
+  if (filtered.length < 100) {
+    addSignal('warn', `BT data: only ${filtered.length} bars returned. Deriv may have limited history for this date range.`, null);
   }
-  return filtered.filter((c, i, arr) => i === 0 || c.epoch !== arr[i-1].epoch);
+  return filtered;
 }
 
 function buildM5FromM1(m1) {
@@ -5256,10 +4992,6 @@ function setBtProgress(pct, status) {
 
 async function startBacktest() {
   if (btRunning) return;
-  if (!TD_API_KEY) {
-    addSignal('warn', 'Backtest: enter your Twelve Data API key in Setup first', null);
-    return;
-  }
   const startBal = parseFloat($('btStartBal').value);
   const profitTarget = parseFloat($('btProfitTarget').value);
   const fromVal = $('btDateFrom').value.trim();
@@ -5303,14 +5035,14 @@ async function startBacktest() {
   try {
     btNewsEvents = await fetchNewsForBacktest(startEpoch, endEpoch);
   } catch (e) {
-    addSignal('warn', '📰 News fetch failed — backtest runs without news filter', null);
+    addSignal('warn', 'News fetch failed — backtest runs without news filter', null);
   }
   if (btCancelled) return finishBt(false);
 
   const highCount = btNewsEvents.filter(e => e.impact === 'High').length;
   const medCount  = btNewsEvents.filter(e => e.impact === 'Medium').length;
   const lowCount  = btNewsEvents.filter(e => e.impact === 'Low').length;
-  addSignal('info', `📰 News loaded: ${highCount} HIGH · ${medCount} MED · ${lowCount} LOW impact events`, null);
+  addSignal('info', `News loaded: ${highCount} HIGH, ${medCount} MED, ${lowCount} LOW events`, null);
 
   replay.start(m1All, m5All, startBal, profitTarget, btNewsEvents);
 
@@ -5353,7 +5085,7 @@ function renderMultiRunTable() {
   const hdr = `
     <div class="settings-section-title" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
       <span>Multi-Run Comparison <span style="color:var(--text3);font-weight:400">(${btRunHistory.length} run${btRunHistory.length>1?'s':''})</span></span>
-      <button onclick="btExportRuns()" style="background:none;border:1px solid var(--border2);color:var(--text2);font-family:var(--mono);font-size:9px;padding:3px 8px;border-radius:3px;cursor:pointer;letter-spacing:.05em">📋 Copy JSON</button>
+      <button onclick="btExportRuns()" style="background:none;border:1px solid var(--border2);color:var(--text2);font-family:var(--mono);font-size:9px;padding:3px 8px;border-radius:3px;cursor:pointer;letter-spacing:.05em">Copy JSON</button>
     </div>`;
 
   const cols = ['#','PnL','Ret%','WR','PF','Trades','TP/SL/BE','AvgHold','MaxDD','Settings'];
@@ -5409,7 +5141,7 @@ function btExportRuns() {
   }));
   try {
     navigator.clipboard.writeText(JSON.stringify(exportData, null, 2));
-    addSignal('info', `📋 ${btRunHistory.length} run(s) copied to clipboard as JSON`, null);
+    addSignal('info', `${btRunHistory.length} run(s) copied to clipboard as JSON`, null);
   } catch {
     // Fallback: open in new tab
     const w = window.open('', '_blank');
@@ -5445,7 +5177,7 @@ function renderBtResults(r) {
       <span class="bt-result-val ${pnl>=0?'g':'r'}">${pnl>=0?'+':''}$${pnl.toFixed(2)}</span>
     </div>
     <div class="bt-result-card" style="grid-column:1/-1">
-      <span class="bt-result-lbl">Profit Target — $${r.profitTarget} ${tgtHit ? '✓ HIT' : `(${tgtPct.toFixed(0)}% reached)`}</span>
+      <span class="bt-result-lbl">Profit Target — $${r.profitTarget} ${tgtHit ? 'HIT' : `(${tgtPct.toFixed(0)}% reached)`}</span>
       <div style="height:4px;background:var(--border2);border-radius:2px;margin-top:6px;overflow:hidden">
         <div style="height:100%;border-radius:2px;background:${tgtHit?'var(--green)':'var(--gold)'};width:${tgtPct}%;transition:width .4s"></div>
       </div>
@@ -5528,7 +5260,7 @@ function renderBtResults(r) {
     const dy = d.getUTCDate();
     const hh = String(d.getUTCHours()).padStart(2,'0');
     const mm = String(d.getUTCMinutes()).padStart(2,'0');
-    const newsTag = t.newsState && t.newsState !== 'NORMAL' ? `<span style="color:var(--gold);font-size:8px"> 📰</span>` : '';
+    const newsTag = t.newsState && t.newsState !== 'NORMAL' ? `<span style="color:var(--gold);font-size:8px"> [NEWS]</span>` : '';
     const holdTag = t.holdBars ? `<span style="color:var(--text3);font-size:9px">${t.holdBars}b</span>` : '';
     const lotsTag = t.lots ? `<span style="color:var(--text3);font-size:9px">${t.lots.toFixed(2)}L</span>` : '';
     return `<div class="bt-trade-row">
@@ -5603,7 +5335,7 @@ function renderLiveHistory() {
   const tgtHit  = profitTarget > 0 && pnlTotal >= profitTarget;
   const tgtCard = profitTarget > 0 ? `
     <div class="bt-result-card" style="grid-column:1/-1">
-      <span class="bt-result-lbl">Profit Target — $${profitTarget} ${tgtHit ? '✓ HIT' : `(${tgtPct.toFixed(0)}% reached)`}</span>
+      <span class="bt-result-lbl">Profit Target — $${profitTarget} ${tgtHit ? 'HIT' : `(${tgtPct.toFixed(0)}% reached)`}</span>
       <div style="height:4px;background:var(--border2);border-radius:2px;margin-top:6px;overflow:hidden">
         <div style="height:100%;border-radius:2px;background:${tgtHit?'var(--green)':'var(--gold)'};width:${tgtPct}%"></div>
       </div>
@@ -5629,7 +5361,7 @@ function renderLiveHistory() {
       ${card('Best / Worst', `<span style="color:var(--green)">+$${bestTrade.toFixed(2)}</span> <span style="color:var(--text3)"> / </span> <span style="color:var(--red)">$${worstTrade.toFixed(2)}</span>`)}
       ${card('Exit Breakdown', `<span style="color:var(--green)">TP:${tpCount}</span> <span style="color:var(--text3)">·</span> <span style="color:var(--red)">SL:${slCount}</span> <span style="color:var(--text3)">·</span> <span style="color:var(--gold)">BE:${beCount}</span> <span style="color:var(--text3)">·</span> <span style="color:#7caaff">TR:${trailCount}</span>`)}
       ${card('Risk / RR', `${CFG.RISK_PCT}% risk · ${CFG.RR}RR`)}
-      ${card('News Trades', `<span style="color:var(--gold)">📰 ${newsCount}</span> / ${totalT}`)}
+      ${card('News Trades', `<span style="color:var(--gold)">${newsCount}</span> / ${totalT}`)}
       ${card('Session Balance', `$${curBal.toFixed(2)}`, pnlTotal>=0?'g':'r')}
     </div>`;
 
@@ -5645,7 +5377,7 @@ function renderLiveHistory() {
     const d = new Date(t.openTime || 0);
     const mo = d.getMonth()+1, dy = d.getDate();
     const hh = String(d.getHours()).padStart(2,'0'), mm = String(d.getMinutes()).padStart(2,'0');
-    const newsTag = t.newsState && t.newsState !== 'NORMAL' ? `<span style="color:var(--gold);font-size:8px"> 📰</span>` : '';
+    const newsTag = t.newsState && t.newsState !== 'NORMAL' ? `<span style="color:var(--gold);font-size:8px"> [NEWS]</span>` : '';
     const lotsTag = t.lots ? `<span style="color:var(--text3);font-size:9px"> ${t.lots.toFixed(2)}L</span>` : '';
     const dur = (t.openTime && t.closeTime) ? Math.round((t.closeTime - t.openTime) / 60000) : null;
     const durTag = dur !== null ? `<span style="color:var(--text3);font-size:9px"> ${dur}m</span>` : '';
@@ -5664,7 +5396,7 @@ function renderLiveHistory() {
   body.innerHTML = `
     <div class="live-section-head">
       <span>Session Performance</span>
-      <button class="live-copy-btn" onclick="liveHistExport()">📋 Copy JSON</button>
+      <button class="live-copy-btn" onclick="liveHistExport()">Copy JSON</button>
     </div>
     ${openTag}${cards}${eqSection}
     <div class="settings-section-title" style="margin-top:16px">Trade Log <span style="color:var(--text3);font-weight:400">(${closed.length})</span></div>
@@ -5691,7 +5423,7 @@ function liveHistExport() {
   };
   try {
     navigator.clipboard.writeText(JSON.stringify(data, null, 2));
-    addSignal('info', `📋 Live session history (${closed.length} trades) copied to clipboard`, null);
+    addSignal('info', `Live session history (${closed.length} trades) copied to clipboard`, null);
   } catch {
     const w = window.open('', '_blank');
     w.document.write('<pre style="font-size:11px;background:#060608;color:#e8e8f2;padding:16px">' + JSON.stringify(data, null, 2) + '</pre>');
@@ -5773,15 +5505,15 @@ setInterval(() => {
         `${e.impact[0]}:${e.title.slice(0, 18)} in ${e.minutes.toFixed(0)}min`
       ).join(' | ');
       if (Math.floor(Date.now() / 60000) % 5 === 0) {
-        addSignal('info', `📰 Upcoming USD events: ${upcoming}`, null);
+        addSignal('info', `Upcoming USD events: ${upcoming}`, null);
       }
     }
   });
 }, 60 * 1000);
 
-addSignal('info','XAUUSD PA Bot — Deriv WebSocket feed engine ready.',null);
-addSignal('info','Connecting to Deriv (frxXAUUSD) — free tick feed, no API key required.',null);
-addSignal('info','Strategy: M5 HTF bias → M1 confirmation + execution. M15 provides EQ reference only. All M1 setups require M5 structural alignment.',null);
+addSignal('info','XAUUSD PA Bot v2 — Deriv WebSocket data engine ready',null);
+
+addSignal('info','Strategy: M5 HTF bias + M1 execution | M15 = EQ reference only | All entries require M5 structural alignment',null);
 </script>
 </body>
 </html>
