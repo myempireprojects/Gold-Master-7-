@@ -3256,13 +3256,18 @@ function updateThreePhaseTrail(pos, currentPrice) {
   let phase = pos.trailPhase || 0;
   let trailInfo = '';
 
-  // Phase 1: Break-even lock
-  if(pctToTP >= CFG.TRAIL_PHASE_1 && phase < 1) {
-    newSL = isBuy ? pos.entry + CFG.TRAIL_DIST : pos.entry - CFG.TRAIL_DIST;
-    phase = 1;
-    trailInfo = `BE LOCK @ ${CFG.TRAIL_PHASE_1}% — SL → ${newSL.toFixed(2)}`;
+  // ── Evaluate highest phase first so a fast-moving price jumps directly
+  //    to the correct phase in a single tick instead of needing 3 ticks. ──
+
+  // Phase 3: 60% runner (check first — highest priority)
+  if(pctToTP >= CFG.TRAIL_PHASE_3 && phase < 3) {
+    const trailDist = totalMove * 0.60;
+    const candidate = isBuy ? currentPrice - trailDist : currentPrice + trailDist;
+    newSL = isBuy ? Math.max(pos.slPrice, candidate) : Math.min(pos.slPrice, candidate);
+    phase = 3;
+    trailInfo = `RUN @ ${CFG.TRAIL_PHASE_3}% — 60% trail → ${newSL.toFixed(2)}`;
   }
-  // Phase 2: 40% trail (profit protection)
+  // Phase 2: 40% profit protection
   else if(pctToTP >= CFG.TRAIL_PHASE_2 && phase < 2) {
     const trailDist = totalMove * 0.40;
     const candidate = isBuy ? currentPrice - trailDist : currentPrice + trailDist;
@@ -3270,13 +3275,11 @@ function updateThreePhaseTrail(pos, currentPrice) {
     phase = 2;
     trailInfo = `PROT @ ${CFG.TRAIL_PHASE_2}% — 40% trail → ${newSL.toFixed(2)}`;
   }
-  // Phase 3: 60% trail (runner mode)
-  else if(pctToTP >= CFG.TRAIL_PHASE_3 && phase < 3) {
-    const trailDist = totalMove * 0.60;
-    const candidate = isBuy ? currentPrice - trailDist : currentPrice + trailDist;
-    newSL = isBuy ? Math.max(pos.slPrice, candidate) : Math.min(pos.slPrice, candidate);
-    phase = 3;
-    trailInfo = `RUN @ ${CFG.TRAIL_PHASE_3}% — 60% trail → ${newSL.toFixed(2)}`;
+  // Phase 1: Break-even lock (lowest — only if higher phases not yet reached)
+  else if(pctToTP >= CFG.TRAIL_PHASE_1 && phase < 1) {
+    newSL = isBuy ? pos.entry + CFG.TRAIL_DIST : pos.entry - CFG.TRAIL_DIST;
+    phase = 1;
+    trailInfo = `BE LOCK @ ${CFG.TRAIL_PHASE_1}% — SL → ${newSL.toFixed(2)}`;
   }
 
   // Continuous trailing for phase 2 & 3 (ratchet — only moves favourably)
@@ -3300,7 +3303,12 @@ function checkDemoPositions() {
   demoPositions.forEach(pos => {
     if(!CFG.TRAIL_ENABLED) return;
     const trail = updateThreePhaseTrail(pos, mid);
-    if(trail && trail.newSL !== pos.slPrice) {
+    if(!trail) return;
+    // ── Always sync display flags regardless of whether SL price changed ──
+    // (price may be ratcheted at max already, but label/colour still needs updating)
+    if(trail.phase >= 1) pos.beTriggered = true;   // gold SL line, "BE" label
+    if(trail.phase >= 2) pos.trailActive = true;   // "TRAIL · SL" label
+    if(trail.newSL !== pos.slPrice) {
       pos.slPrice = trail.newSL;
       pos.trailPhase = trail.phase;
       pos.slAmount = 0; // BE+ territory
